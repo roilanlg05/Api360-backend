@@ -1,0 +1,60 @@
+# Python cache / compiled
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Dependency metadata
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Build / packaging
+build/
+dist/
+wheelhouse/
+
+# Logs
+*.log
+
+# Coverage / testing
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE / editor
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment & secrets
+.env
+.env.*
+*.env
+
+# Supabase (keep schema files you need)
+supabase/.temp/
+supabase/functions/.netlify/
+
+# Cache
+.cache/
+
+# Node (if any frontend assets)
+node_modules/
+
+# Misc
+*.sqlite3
+*.db
