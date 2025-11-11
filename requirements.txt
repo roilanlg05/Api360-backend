@@ -1,4 +1,7 @@
 fastapi[standard]
 pydantic_settings
-supabase
 python-dotenv 
+psycopg 
+psycopg-binary
+sqlmodel
+requests
