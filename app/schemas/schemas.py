@@ -1,11 +1,11 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, time
 from typing import Optional, List, Dict
 import uuid
 
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, UniqueConstraint, Index, CheckConstraint, text
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.types import DateTime
+from sqlalchemy import Column, UniqueConstraint, Index, CheckConstraint, text, ForeignKey  # <-- agregado
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID  # <-- agregado
+from sqlalchemy.types import DateTime, Date, Time, String, Float, Integer
 
 
 # =========================
@@ -59,15 +59,27 @@ class Users(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False, index=True, server_default=text("CURRENT_TIMESTAMP"))
     )
 
-    manager: Optional["Manager"] = Relationship(back_populates="user")
-    crew: Optional["Crew"] = Relationship(back_populates="user")
-    driver: Optional["Driver"] = Relationship(back_populates="user")
+    password_reset_nonce: str | None = Field(default=None, index=True)
+
+    manager: Optional["Manager"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "passive_deletes": True},  # <-- cascade
+    )
+    crew: Optional["Crew"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "passive_deletes": True},  # <-- cascade
+    )
+    driver: Optional["Driver"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "passive_deletes": True},  # <-- cascade
+    )
 
     sent_messages: List["Message"] = Relationship(
         back_populates="sender",
         sa_relationship_kwargs={
             "foreign_keys": "[Message.sender_id]",
             "cascade": "all, delete-orphan",
+            "passive_deletes": True,  # <-- agregado
         },
     )
     received_messages: List["Message"] = Relationship(
@@ -75,6 +87,7 @@ class Users(SQLModel, table=True):
         sa_relationship_kwargs={
             "foreign_keys": "[Message.recipient_id]",
             "cascade": "all, delete-orphan",
+            "passive_deletes": True,  # <-- agregado
         },
     )
     notifications_received: List["Notification"] = Relationship(
@@ -82,11 +95,15 @@ class Users(SQLModel, table=True):
         sa_relationship_kwargs={
             "foreign_keys": "[Notification.recipient_id]",
             "cascade": "all, delete-orphan",
+            "passive_deletes": True,  # <-- agregado
         },
     )
     refresh_tokens: List["RefreshToken"] = Relationship(
         back_populates="user",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "passive_deletes": True,  # <-- agregado
+        },
     )
 
 
@@ -100,16 +117,33 @@ class Manager(SQLModel, table=True):
     """
     __tablename__ = "manager"
 
-    id: uuid.UUID = Field(primary_key=True, foreign_key="auth.users.id", nullable=False)
+    id: uuid.UUID = Field(
+        # primary_key=True,  # ❌ quitar: no permitido junto a sa_column
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("auth.users.id", ondelete="CASCADE"),
+            nullable=False,
+            primary_key=True,  # ✅ deja la PK aquí
+        ),
+    )
     organization_id: Optional[uuid.UUID] = Field(
-        default=None, foreign_key="organization.id", index=True
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("organization.id", ondelete="CASCADE"),
+            index=True,
+            nullable=True,
+        ),
     )
 
-    user: Users = Relationship(back_populates="manager")
+    user: Users = Relationship(
+        back_populates="manager",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
 
     organization: Optional["Organization"] = Relationship(
         back_populates="managers",
-        sa_relationship_kwargs={"foreign_keys": "[Manager.organization_id]"},
+        sa_relationship_kwargs={"foreign_keys": "[Manager.organization_id]", "passive_deletes": True},
     )
 
 
@@ -119,14 +153,21 @@ class Crew(SQLModel, table=True):
     """
     __tablename__ = "crew"
 
-    id: uuid.UUID = Field(primary_key=True, foreign_key="auth.users.id", nullable=False)
-    aeroline: Optional[str] = Field(
-        default=None,
-        description="Código AA, WN, DL...",
-        index=True,
+    id: uuid.UUID = Field(
+        # primary_key=True,  # ❌ quitar
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("auth.users.id", ondelete="CASCADE"),
+            nullable=False,
+            primary_key=True,  # ✅ PK en Column
+        ),
     )
+    aeroline: Optional[str] = Field(default=None, description="Código AA, WN, DL...", index=True)
 
-    user: Users = Relationship(back_populates="crew")
+    user: Users = Relationship(
+        back_populates="crew",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
 
 
 class Driver(SQLModel, table=True):
@@ -135,16 +176,42 @@ class Driver(SQLModel, table=True):
     """
     __tablename__ = "driver"
 
-    id: uuid.UUID = Field(primary_key=True, foreign_key="auth.users.id", nullable=False)
-    is_active: bool = Field(default=True, nullable=False, index=True)
-    point: Optional[str] = Field(default=None)
+    id: uuid.UUID = Field(
+        # primary_key=True,  # ❌ quitar
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("auth.users.id", ondelete="CASCADE"),
+            nullable=False,
+            primary_key=True,  # ✅ PK en Column
+        ),
+    )
+    is_active: bool = Field(default=False, nullable=False, index=True)
+    point: dict | str | None = Field(
+        default=None,
+        sa_column=Column(JSONB, nullable=True)
+    )
     location_id: Optional[uuid.UUID] = Field(
-        default=None, foreign_key="location.id", index=True
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("location.id", ondelete="CASCADE"),  # <-- CASCADE (borra drivers al borrar location)
+            index=True,
+            nullable=True,
+        ),
     )
 
-    user: Users = Relationship(back_populates="driver")
-    location: Optional["Location"] = Relationship(back_populates="drivers")
-    trips: List["Trip"] = Relationship(back_populates="driver")
+    user: Users = Relationship(
+        back_populates="driver",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
+    location: Optional["Location"] = Relationship(
+        back_populates="drivers",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
+    trips: List["Trip"] = Relationship(
+        back_populates="driver",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "passive_deletes": True},  # <-- cascade
+    )
 
 
 # =========================
@@ -156,20 +223,25 @@ class Organization(SQLModel, table=True):
     public.organization
     """
     __tablename__ = "organization"
-    __table_args__ = (
+    """    __table_args__ = (
         UniqueConstraint("name", name="uq_organization_name"),
-    )
+    )"""
 
     id: uuid.UUID = Field(
         default_factory=uuid.uuid4,
         primary_key=True,
         sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
-    name: str = Field(nullable=False, index=True, unique=True)
-
     manager_id: Optional[uuid.UUID] = Field(
-        default=None, foreign_key="manager.id", index=True
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("manager.id", ondelete="SET NULL"),  # <-- SET NULL para no borrar la organización
+            index=True,
+            nullable=True,
+        ),
     )
+    #name: str = Field(nullable=True, index=True, unique=True)
 
     email: Optional[str] = Field(default=None)
     phone: str = Field(nullable=False)
@@ -188,14 +260,20 @@ class Organization(SQLModel, table=True):
 
     managers: List["Manager"] = Relationship(
         back_populates="organization",
-        sa_relationship_kwargs={"foreign_keys": "[Manager.organization_id]"},
+        sa_relationship_kwargs={
+            "foreign_keys": "[Manager.organization_id]",
+            "passive_deletes": True,
+        },
     )
 
     primary_manager: Optional["Manager"] = Relationship(
-        sa_relationship_kwargs={"foreign_keys": "[Organization.manager_id]"},
+        sa_relationship_kwargs={"foreign_keys": "[Organization.manager_id]", "passive_deletes": True},
     )
 
-    locations: List["Location"] = Relationship(back_populates="organization")
+    locations: List["Location"] = Relationship(
+        back_populates="organization",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "passive_deletes": True},  # <-- cascade
+    )
 
 
 class Location(SQLModel, table=True):
@@ -210,15 +288,32 @@ class Location(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
     organization_id: uuid.UUID = Field(
-        foreign_key="organization.id", nullable=False, index=True
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("organization.id", ondelete="CASCADE"),  # <-- CASCADE
+            nullable=False,
+            index=True,
+        )
     )
     name: str = Field(nullable=False, index=True)
-    point: Optional[str] = Field(default=None)
+    point: dict | str | None = Field(
+        default=None,
+        sa_column=Column(JSONB, nullable=True)
+    )
 
-    organization: "Organization" = Relationship(back_populates="locations")
+    organization: "Organization" = Relationship(
+        back_populates="locations",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
 
-    drivers: List["Driver"] = Relationship(back_populates="location")
-    trips: List["Trip"] = Relationship(back_populates="location")
+    drivers: List["Driver"] = Relationship(
+        back_populates="location",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "passive_deletes": True},  # <-- cascade
+    )
+    trips: List["Trip"] = Relationship(
+        back_populates="location",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "passive_deletes": True},  # <-- cascade
+    )
 
 
 class Trip(SQLModel, table=True):
@@ -233,21 +328,35 @@ class Trip(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
     assigned_driver: Optional[uuid.UUID] = Field(
-        default=None, foreign_key="driver.id", index=True
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("driver.id", ondelete="SET NULL"),  # <-- SET NULL al borrar driver
+            index=True,
+            nullable=True,
+        ),
     )
     location_id: uuid.UUID = Field(
-        foreign_key="location.id", nullable=False, index=True
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("location.id", ondelete="CASCADE"),  # <-- CASCADE (borra trips al borrar location)
+            nullable=False,
+            index=True,
+        ),
     )
-
-    pick_up_time: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), nullable=False, index=True)  # ✅ SIN nullable en Field
+    pick_up_date: date = Field(
+        sa_column=Column(Date(), nullable=False, index=True)
+    )
+    pick_up_time: time = Field(
+        sa_column=Column(Time(timezone=True), nullable=False, index=True)
     )
     pick_up_location: str = Field(nullable=False)
     drop_off_location: str = Field(nullable=False)
     aeroline: str = Field(nullable=False, index=True)
+    flight_number: str = Field(nullable=False, index=True)
 
-    riders: Dict[str, int] = Field(
-        sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    riders: int = Field(
+        sa_column=Column(Integer, nullable=False)
     )
 
     started_at: Optional[datetime] = Field(
@@ -272,8 +381,14 @@ class Trip(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False, index=True, server_default=text("CURRENT_TIMESTAMP"))
     )
 
-    driver: Optional["Driver"] = Relationship(back_populates="trips")
-    location: "Location" = Relationship(back_populates="trips")
+    driver: Optional["Driver"] = Relationship(
+        back_populates="trips",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
+    location: "Location" = Relationship(
+        back_populates="trips",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
 
 
 class TripHistory(SQLModel, table=True):
@@ -288,21 +403,36 @@ class TripHistory(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
     assigned_driver: Optional[uuid.UUID] = Field(
-        default=None, foreign_key="driver.id", index=True
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("driver.id", ondelete="SET NULL"),  # <-- SET NULL
+            index=True,
+            nullable=True,
+        ),
     )
     location_id: uuid.UUID = Field(
-        foreign_key="location.id", nullable=False, index=True
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("location.id", ondelete="CASCADE"),  # <-- CASCADE
+            nullable=False,
+            index=True,
+        ),
     )
 
-    pick_up_time: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), nullable=False, index=True)
+    pick_up_date: date = Field(
+        sa_column=Column(Date(), nullable=False, index=True)
+    )
+    pick_up_time: time = Field(
+        sa_column=Column(Time(timezone=True), nullable=False, index=True)
     )
     pick_up_location: str = Field(nullable=False)
     drop_off_location: str = Field(nullable=False)
     aeroline: str = Field(nullable=False, index=True)
+    flight_number: str = Field(nullable=False, index=True)
 
-    riders: Dict[str, int] = Field(
-        sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    riders: int = Field(
+        sa_column=Column(Integer, nullable=False)
     )
 
     started_at: Optional[datetime] = Field(
@@ -350,7 +480,12 @@ class Notification(SQLModel, table=True):
     )
 
     recipient_id: uuid.UUID = Field(
-        foreign_key="auth.users.id", nullable=False, index=True
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("auth.users.id", ondelete="CASCADE"),  # <-- CASCADE
+            nullable=False,
+            index=True,
+        )
     )
 
     link: Optional[str] = Field(default=None)
@@ -365,7 +500,7 @@ class Notification(SQLModel, table=True):
 
     recipient: Users = Relationship(
         back_populates="notifications_received",
-        sa_relationship_kwargs={"foreign_keys": "[Notification.recipient_id]"},
+        sa_relationship_kwargs={"foreign_keys": "[Notification.recipient_id]", "passive_deletes": True},
     )
 
 
@@ -391,11 +526,11 @@ class Chat(SQLModel, table=True):
 
     participants: List["ChatParticipant"] = Relationship(
         back_populates="chat",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "passive_deletes": True},  # <-- cascade
     )
     messages: List["Message"] = Relationship(
         back_populates="chat",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "passive_deletes": True},  # <-- cascade
     )
 
 
@@ -404,9 +539,7 @@ class ChatParticipant(SQLModel, table=True):
     public.chat_participant
     """
     __tablename__ = "chat_participant"
-    __table_args__ = (
-        UniqueConstraint("chat_id", "user_id", name="uq_chat_participant_unique"),
-    )
+    __table_args__ = (UniqueConstraint("chat_id", "user_id", name="uq_chat_participant_unique"),)
 
     id: uuid.UUID = Field(
         default_factory=uuid.uuid4,
@@ -414,18 +547,33 @@ class ChatParticipant(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
     chat_id: uuid.UUID = Field(
-        foreign_key="chat.id", nullable=False, index=True
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("chat.id", ondelete="CASCADE"),  # <-- CASCADE
+            nullable=False,
+            index=True,
+        )
     )
     user_id: uuid.UUID = Field(
-        foreign_key="auth.users.id", nullable=False, index=True
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("auth.users.id", ondelete="CASCADE"),  # <-- CASCADE
+            nullable=False,
+            index=True,
+        )
     )
     joined_at: datetime = Field(
         default_factory=now_utc,
         sa_column=Column(DateTime(timezone=True), nullable=False, index=True, server_default=text("CURRENT_TIMESTAMP"))
     )
 
-    chat: Chat = Relationship(back_populates="participants")
-    user: Users = Relationship()
+    chat: Chat = Relationship(
+        back_populates="participants",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
+    user: Users = Relationship(
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
 
 
 class Message(SQLModel, table=True):
@@ -440,14 +588,29 @@ class Message(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
     chat_id: uuid.UUID = Field(
-        foreign_key="chat.id", nullable=False, index=True
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("chat.id", ondelete="CASCADE"),  # <-- CASCADE
+            nullable=False,
+            index=True,
+        )
     )
-
     sender_id: uuid.UUID = Field(
-        foreign_key="auth.users.id", nullable=False, index=True
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("auth.users.id", ondelete="CASCADE"),  # <-- CASCADE
+            nullable=False,
+            index=True,
+        )
     )
     recipient_id: Optional[uuid.UUID] = Field(
-        default=None, foreign_key="auth.users.id", index=True
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("auth.users.id", ondelete="CASCADE"),  # <-- CASCADE
+            nullable=True,
+            index=True,
+        )
     )
 
     content: str = Field(nullable=False)
@@ -456,14 +619,17 @@ class Message(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False, index=True, server_default=text("CURRENT_TIMESTAMP"))
     )
 
-    chat: Chat = Relationship(back_populates="messages")
+    chat: Chat = Relationship(
+        back_populates="messages",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
     sender: Users = Relationship(
         back_populates="sent_messages",
-        sa_relationship_kwargs={"foreign_keys": "[Message.sender_id]"},
+        sa_relationship_kwargs={"foreign_keys": "[Message.sender_id]", "passive_deletes": True},
     )
     recipient: Optional[Users] = Relationship(
         back_populates="received_messages",
-        sa_relationship_kwargs={"foreign_keys": "[Message.recipient_id]"},
+        sa_relationship_kwargs={"foreign_keys": "[Message.recipient_id]", "passive_deletes": True},
     )
 
 
@@ -487,7 +653,12 @@ class RefreshToken(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
     user_id: uuid.UUID = Field(
-        foreign_key="auth.users.id", nullable=False, index=True
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("auth.users.id", ondelete="CASCADE"),  # <-- CASCADE
+            nullable=False,
+            index=True,
+        )
     )
     token_hash: str = Field(nullable=False)
     expires_at: datetime = Field(
@@ -501,5 +672,39 @@ class RefreshToken(SQLModel, table=True):
 
     user: Users = Relationship(
         back_populates="refresh_tokens",
-        sa_relationship_kwargs={"foreign_keys": "[RefreshToken.user_id]"},
+        sa_relationship_kwargs={"foreign_keys": "[RefreshToken.user_id]", "passive_deletes": True},
+    )
+
+
+class Airport(SQLModel, table=True):
+    __tablename__ = "airport"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_airport_code"),
+        CheckConstraint("latitude BETWEEN -90 AND 90", name="ck_airport_lat"),
+        CheckConstraint("longitude BETWEEN -180 AND 180", name="ck_airport_lon"),
+        Index("ix_airport_country_zone", "country_code", "zone_code"),
+    )
+
+    id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        primary_key=True,
+        sa_column_kwargs={"server_default": text("gen_random_uuid()")},
+    )
+    code: str = Field(
+        sa_column=Column(String(10), nullable=False, index=True)
+    ) 
+    name: str = Field(
+        sa_column=Column(String(150), nullable=False)
+    ) 
+    latitude: float = Field(
+        sa_column=Column(Float, nullable=False)
+    ) 
+    longitude: float = Field(
+        sa_column=Column(Float, nullable=False)
+    ) 
+    country_code: str = Field(
+        sa_column=Column(String(2), nullable=False, index=True)
+    )
+    zone_code: str = Field(
+        sa_column=Column(String(4), nullable=False, index=True)
     )

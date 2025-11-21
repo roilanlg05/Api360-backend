@@ -23,11 +23,12 @@ class Settings(BaseSettings):
         "/v1/auth/sign-in", 
         "/v1/auth/refresh",
         "/v1/auth/verify-email",
+        "/v1/auth/forgot-password",
+        "/v1/auth/reset-password",
         "/docs",
         "/redocs",
         "/favicon.ico",
-        "/openapi.json"
-
+        "/openapi.json",
     ]
 
 

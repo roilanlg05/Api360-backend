@@ -16,7 +16,7 @@ settings = Settings()
 
 ph = PasswordHasher()  # usa parámetros seguros por defecto
 
-class Helpers:
+class Utils:
 
     @staticmethod
     def validate_password(v: str) -> str:
@@ -68,9 +68,9 @@ class Helpers:
                 key=k,
                 value=v, 
                 httponly=True, 
-                #secure=True, 
-                samesite="lax", 
-                domain="192.168.0.148",
+                secure=True, 
+                samesite="none", #should be "lax" in prod
+                #domain="192.168.0.148",
                 path="/",
                 max_age=30 * 24 * 60 * 60  # 30 días
                 )
@@ -90,6 +90,11 @@ class Helpers:
 
 class AuthHelpers:
 
+
+    @staticmethod
+    def get_current_user(db, id) -> Users:
+        user = db.get(Users, id)
+        return user
 
     @staticmethod
     def hash_password(plain: str) -> str:
@@ -224,36 +229,27 @@ class AuthHelpers:
 
     @staticmethod
     def verify_role(roles: list):
-
-        allowed = {roles} if isinstance(roles, str) else set(roles)
-        # Factory: devuelve una función que FastAPI usará como dependencia
-
         def _dep(request: Request):
-
             user: dict = request.state.user
-            role = None
-            if user:
-                return user
-            if role not in allowed:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not Authorized: We couldn't validate the role")
-            return user  # puedes devolver True si solo quieres un booleano
-            
+            user_data = user.get("metadata")
+            role = user_data.get("role")
+            if role not in roles:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not Authorized: We couldn't validate the role"
+                )
+            return user
         return _dep
     
     @staticmethod
-    def get_user(db, email: str | None = None, id: str | None = None) -> Users:
-        if email:
-            query = (
-            select(Users)
-            .options(
-                selectinload(Users.manager),
-                selectinload(Users.crew)
-            )
-            .where(Users.email == email)
+    def get_user_by_email(db, email: str) -> Users:
+        query = (
+        select(Users)
+        .options(
+            selectinload(Users.manager),
+            selectinload(Users.crew)
         )
-            user = db.exec(query).one()
-            return user
-        elif id:
-            return db.get(Users, id)
-
-        return None
+        .where(Users.email == email)
+    )
+        user = db.exec(query).one()
+        return user

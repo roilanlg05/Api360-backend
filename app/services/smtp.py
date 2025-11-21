@@ -42,7 +42,7 @@ async def send_email(email: EmailStr, sub: str, html_content: str, confirmation_
     json=payload
     )
 
-    print(f"Status: {response.status_code}")
+    print(f"Ya se envio")
     print(f"Response: {response.text}")
     return response.status_code == 201
 
@@ -441,7 +441,7 @@ def get_password_reset_email_template(reset_url: str) -> str:
                 <div class="security-notice">
                     <p><strong>⚠️ Security Notice:</strong></p>
                     <p>
-                        This link will <span class="expiration">expire in 1 hour</span> for security reasons. 
+                        This link will <span class="expiration">expire in 30 minutes</span> for security reasons. 
                         After using this link once, it will become invalid.
                     </p>
                 </div>

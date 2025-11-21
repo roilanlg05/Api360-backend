@@ -1,25 +1,25 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie, Request
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from typing import Annotated
 from jose import JWTError, jwt
-from app.models.user import CreateUser, PasswordUpdate
-from app.models.auth_model import EmailPasswordRequestForm
-from app.services.helpers import Helpers, AuthHelpers
+from app.models.user import CreateUser, PasswordUpdate, EmailPasswordRequestForm, UserResponse
+from app.services.utils import Utils, AuthHelpers
 from app.core.config import Settings
 from app.core.db_session import SessionDep
-from app.schemas.schemas import Users, Manager, Crew, Driver, RefreshToken
+from app.schemas.schemas import Users, Manager, Crew, Driver, RefreshToken, Organization
 from app.services.smtp import get_confirmation_email_template, get_password_reset_email_template, send_email
 from datetime import datetime, timezone, timedelta
 from sqlmodel import select
+import secrets
 
-helpers = Helpers()
+utils = Utils()
 auth = AuthHelpers()
 settings = Settings()
 
 router = APIRouter(prefix="/v1/auth", tags=["Auth"])
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def registre_user(user_raw: CreateUser, db: SessionDep) -> dict:
+async def register(user_raw: CreateUser, db: SessionDep) -> dict:
 
     hashed_pass = auth.hash_password(user_raw.password)
 
@@ -36,11 +36,27 @@ async def registre_user(user_raw: CreateUser, db: SessionDep) -> dict:
 
         match user_raw.role:
             case "admin":
+                # Crear primero manager y flushear para garantizar existencia en FK
                 manager = Manager(id=user.id)
                 db.add(manager)
+                db.flush()  # <-- asegura INSERT antes de usar su id en otra FK
+
+                organization = Organization(
+                    manager_id=manager.id,
+                    email=user.email,
+                    phone=user.phone,
+                    status="active"
+                )
+                db.add(organization)
+                db.flush()  # inserta organización y obtiene su id
+
+                # Asociar organización al manager (campo reversible)
+                manager.organization_id = organization.id
+                db.add(manager)
                 db.commit()
+                db.refresh(organization)
             case "crew":
-                crew = Crew(id=user.id)
+                crew = Crew(id=user.id, aeroline=user_raw.aeroline)
                 db.add(crew)
                 db.commit()
             case _:
@@ -54,7 +70,7 @@ async def registre_user(user_raw: CreateUser, db: SessionDep) -> dict:
             
         token = auth.encode_token(str(user.id), metadata, expires_in=timedelta(hours=24))
         
-        confirmation_url = f"https://www.optionstriker.com/#token={token['access_token']}"
+        confirmation_url = f"http://localhost:3000/auth/verify-email/?token={token['access_token']}"
         html_content = get_confirmation_email_template(confirmation_url)
 
         await send_email(
@@ -63,7 +79,7 @@ async def registre_user(user_raw: CreateUser, db: SessionDep) -> dict:
             html_content,
             confirmation_url
         )
-    
+
         return {"message": "User registered successfully. Check your email."}
     except Exception as e:
         db.rollback()
@@ -71,14 +87,15 @@ async def registre_user(user_raw: CreateUser, db: SessionDep) -> dict:
 
     
 @router.post("/sign-in")
-async def sign_in(user_data: Annotated[EmailPasswordRequestForm, Depends()], db: SessionDep, response: Response):
+async def sign_in(user_data: EmailPasswordRequestForm, db: SessionDep, response: Response):
     try:
         # Cargar user con sus relaciones
-        user = auth.get_user(db, email=user_data.email)
+        user = auth.get_user_by_email(db, email=user_data.email)
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     
     if not auth.verify_password(user_data.password, user.password_hash, db, user.id):
+        print("estoy aqui")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     
     if not user.email_verified_at:
@@ -87,14 +104,10 @@ async def sign_in(user_data: Annotated[EmailPasswordRequestForm, Depends()], db:
     # Construir metadata
     metadata = {
         "id": str(user.id),
-        "full_name": user.full_name,
         "email": user.email,
-        "profile_pic": user.profile_pic,
         "phone": user.phone,
-        "email_verified_at": user.email_verified_at.isoformat() if user.email_verified_at else None,  # ✅ FIX
         "role": user.role
     }
-
     # Agregar campos específicos del rol
     if user.manager and user.role == "admin":
         metadata["organization_id"] = str(user.manager.organization_id) if user.manager.organization_id else None
@@ -105,7 +118,7 @@ async def sign_in(user_data: Annotated[EmailPasswordRequestForm, Depends()], db:
     raw, token_hash, exp = auth.gen_refresh_token()
 
     auth.save_refresh_in_db(db, user.id, token_hash, exp)
-    helpers.set_cookies(response, {
+    utils.set_cookies(response, {
         "refresh_token": raw,
         "expires_at": exp
     })
@@ -116,8 +129,7 @@ async def sign_in(user_data: Annotated[EmailPasswordRequestForm, Depends()], db:
                 "access_token": access_token_data["access_token"],
                 "issued_at": access_token_data["iat"],  # Ya debería ser int (timestamp)
                 "expires_at": access_token_data["exp"],   # Ya debería ser int (timestamp)
-                "refresh_token": raw,
-                "rf_expires_at": exp.isoformat()
+                "type": "Bearer"
             },
             "user_data": metadata
         }
@@ -143,7 +155,7 @@ async def refresh_token(
         auth.revoke_all_user_refresh(db, rec.user_id)      # Mitigación: revoca todos
         raise HTTPException(status_code=401, detail="Reused refresh detected")
     
-    if rec.expires_at <= helpers.now_utc():                        # Si expiró → revoca y 401
+    if rec.expires_at <= utils.now_utc():                        # Si expiró → revoca y 401
         auth.revoke_refresh(db, rec.id)
         raise HTTPException(status_code=401, detail="Expired refresh")
 
@@ -155,14 +167,11 @@ async def refresh_token(
     auth.save_refresh_in_db(db, user_id=rec.user_id, token_hash=new_h, exp=new_exp)
 
     # Emitimos un nuevo access para ese user
-    user = auth.get_user(db, id=rec.user_id)  
+    user = auth.get_current_user(db, rec.user_id)  
     metadata = {
         "id": str(user.id),
-        "full_name": user.full_name,
         "email": user.email,
-        "profile_pic": user.profile_pic,
         "phone": user.phone,
-        "email_verified_at": user.email_verified_at.isoformat() if user.email_verified_at else None,  # ✅ FIX
         "role": user.role
     }
 
@@ -174,8 +183,11 @@ async def refresh_token(
 
     # Tu función para cargar el usuario
     access_token = auth.encode_token(sub=str(user.id), metadata=metadata)
-    resp = {"access_token": access_token, "token_type": "bearer"}
-    helpers.set_cookies(response,
+    access_token.update({"token_type": "bearer"})
+    resp = {"data":{ 
+                "session": access_token, 
+                }}
+    utils.set_cookies(response,
                         {
                             "refresh_token": new_raw, 
                             "expires_at": new_exp
@@ -184,17 +196,21 @@ async def refresh_token(
     return resp
 
 @router.post("/sign-out")
-async def sign_out(response: Response):
-    cookie_list = ["refresh_token", "rf_expires_at"]
-    helpers.delete_cookies(response, cookie_list)
+async def sign_out(response: Response, request: Request, db: SessionDep):
+
+    """user = request.state.user
+    auth.revoke_all_user_refresh(db, user["sub"])"""
+    cookie_list = ["refresh_token", "expires_at"]
+    utils.delete_cookies(response, cookie_list)\
+    
     return {"message": "Signed out successfully"}
 
 @router.put("/change-password")
 async def change_password(
-    passwords: PasswordUpdate,
+    data: PasswordUpdate,
     db: SessionDep,
     request: Request,
-    response: Response,  # ✅ Agregar response para borrar cookies
+    response: Response,  # Agregar response para borrar cookies
 ):
     
     user_data = request.state.user
@@ -204,57 +220,55 @@ async def change_password(
             detail="Not Authorized"
         )"""
     
-    if passwords.old_password == passwords.new_password:
+    if data.old_password == data.new_password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="New password should be difrent fom your old password"
         )
 
-    if not passwords.new_password:
+    if not data.new_password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="New password is required"
         )
 
     try:
-        helpers.validate_password(passwords.new_password)
-    except ValueError as exc:
+        utils.validate_password(data.new_password)
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc)
+            detail=str(e)
         )
 
-    db_user = db.exec(select(Users).where(Users.email == user_data["email"])).one()
+    db_user = auth.get_current_user(db, user_data["sub"])
     if not db_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
 
-    # ✅ Actualizar contraseña
-    db_user.password_hash = auth.hash_password(passwords.new_password)
-    db_user.updated_at = helpers.now_utc()
+    # Actualizar contraseña
+    db_user.password_hash = auth.hash_password(data.new_password)
+    db_user.updated_at = utils.now_utc()
     db.add(db_user)
     db.commit()
 
-    # ✅ IMPORTANTE: Revocar todos los refresh tokens del usuario
+    # Revocar todos los refresh tokens del usuario
     auth.revoke_all_user_refresh(db, db_user.id)
 
-    # ✅ Borrar cookie del refresh_token actual
-    helpers.delete_cookies(response, ["refresh_token", "expires_at"])
+    # Borrar cookie del refresh_token actual
+    utils.delete_cookies(response, ["refresh_token", "expires_at"])
 
     return {
         "message": "Password reset successful. Please sign in again with your new password."
     }
     
 @router.get("/verify-email")
-async def verify_email(token: str, db: SessionDep):  # ✅ token como query parameter
+async def verify_email(token: str, db: SessionDep):  # token como query parameter
     """Verifica el email del usuario con el token enviado por correo"""
     try:
-        # ✅ Decodificar directamente el token del query param (no del header)
+        # Decodificar directamente el token del query param
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
-
-        print(payload)
         
         # Verificar que sea un token de verificación
         if payload.get("metadata").get("purpose") != "email_verification":
@@ -263,8 +277,7 @@ async def verify_email(token: str, db: SessionDep):  # ✅ token como query para
                 detail="Invalid verification token"
             )
         
-        user_id = payload.get("sub")
-        user = db.get(Users, user_id)
+        user = auth.get_current_user(db, payload.get("sub"))
         
         if not user:
             raise HTTPException(
@@ -273,15 +286,14 @@ async def verify_email(token: str, db: SessionDep):  # ✅ token como query para
             )
         
         if user.email_verified_at:
-            return {"message": "Email already verified"}
+            raise HTTPException(status_code=status.HTTP_304_NOT_MODIFIED, detail="Email already verified")
         
         # Marcar email como verificado
-        user.email_verified_at = helpers.now_utc()
+        user.email_verified_at = utils.now_utc()
         db.add(user)
         db.commit()
-        
-        return {"message": "Email verified successfully"}
-        
+        resp = JSONResponse(content="Email verified successfully", status_code=status.HTTP_200_OK)
+        return resp
     except JWTError as e:  # ✅ Ahora JWTError está importado
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -290,95 +302,59 @@ async def verify_email(token: str, db: SessionDep):  # ✅ token como query para
 
 @router.post("/forgot-password")
 async def forgot_password(email: str, db: SessionDep):
-    """Envía email con link para resetear contraseña"""
+    print("hola estoy aqui")
+    resp = JSONResponse(content="If the email exists, you will receive a password reset link",
+                        status_code=status.HTTP_200_OK)
     try:
-        user = auth.get_user(db, email=email)
-    except Exception:
-        # ✅ No revelar si el email existe (seguridad)
-        return {"message": "If the email exists, you will receive a password reset link"}
-    
-    # ✅ Generar token de reset con expiración de 1 hora
+        user = auth.get_user_by_email(db, email=email)
+        print(user)
+    except Exception as e:
+        #return resp
+        return str(e)
+
+    # Rotar nonce
+    user.password_reset_nonce = secrets.token_urlsafe(16)
+    db.add(user); db.commit(); db.refresh(user)
+
     metadata = {
         "email": user.email,
-        "purpose": "password_reset"
+        "purpose": "password_reset",
+        "nonce": user.password_reset_nonce
     }
-    
-    token = auth.encode_token(
-        sub=str(user.id),
-        metadata=metadata,
-        expires_in=timedelta(hours=1)  # ✅ Más corto que verificación de email
-    )
-    
-    # ✅ URL para resetear contraseña
-    reset_url = f"https://www.optionstriker.com/reset-password?token={token['access_token']}"
+    token = auth.encode_token(sub=str(user.id), metadata=metadata, expires_in=timedelta(minutes=30))
+
+    reset_url = f"http://localhost:3000/reset-password/?token={token['access_token']}"
     html_content = get_password_reset_email_template(reset_url)
-    
-    await send_email(
-        user.email,
-        "Reset Your Password - Api360",
-        html_content,
-        reset_url
-    )
-    
-    return {"message": "If the email exists, you will receive a password reset link"}
+    await send_email(user.email, "Reset Your Password - Api360", html_content, reset_url)
+    return resp
 
 
 @router.post("/reset-password")
-async def reset_password(
-    token: str,
-    new_password: str,
-    db: SessionDep,
-    response: Response
-):
-    """Resetea la contraseña usando el token del email"""
-    try:
-        # ✅ Decodificar token
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
-        
-        # ✅ Verificar que sea token de reset
-        if payload.get("purpose") != "password_reset":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid reset token"
-            )
-        
-        # ✅ Validar nueva contraseña
-        try:
-            helpers.validate_password(new_password)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(exc)
-            )
-        
-        # ✅ Obtener usuario
-        user_id = payload.get("sub")
-        user = db.get(Users, user_id)
-        
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
-        # ✅ Actualizar contraseña
-        user.password_hash = auth.hash_password(new_password)
-        user.updated_at = datetime.now(timezone.utc)
-        db.add(user)
-        db.commit()
-        
-        # ✅ CRÍTICO: Revocar todos los refresh tokens
-        auth.revoke_all_user_refresh(db, user.id)
-        
-        # ✅ Borrar cookies si existen
-        helpers.delete_cookies(response, ["refresh_token", "expires_at"])
-        
-        return {
-            "message": "Password reset successful. Please sign in with your new password."
-        }
-        
-    except JWTError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid or expired token: {str(e)}"
-        )
+async def reset_password(token: str, new_password: str, db: SessionDep, response: Response):
+    payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
+    meta = payload.get("metadata") or {}
+    if meta.get("purpose") != "password_reset":
+        raise HTTPException(status_code=400, detail="Invalid reset token")
+
+    user = db.get(Users, payload["sub"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Validar nonce
+    if not user.password_reset_nonce or user.password_reset_nonce != meta.get("nonce"):
+        raise HTTPException(status_code=400, detail="Token already used or invalid")
+
+    # Validar contraseña
+    utils.validate_password(new_password)
+    user.password_hash = auth.hash_password(new_password)
+    user.updated_at = utils.now_utc()
+
+    # Invalidar el token (rotar nonce)
+    user.password_reset_nonce = None
+    db.add(user)
+    db.commit()
+
+    auth.revoke_all_user_refresh(db, user.id)
+    utils.delete_cookies(response, ["refresh_token", "expires_at"])
+
+    return {"message": "Password updated. Sign in again."}

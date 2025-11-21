@@ -5,3 +5,7 @@ psycopg
 psycopg-binary
 sqlmodel
 requests
+pandas 
+openpyxl 
+python-dateutil 
+pytz
