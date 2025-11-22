@@ -1,18 +1,21 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends
 from sqlalchemy import func
 from sqlmodel import select
 from app.core.db_session import SessionDep
 from app.schemas.schemas import Trip as TripDB, Location, Airport
 from app.services.trip_importer import load_trips_from_excel, Trip
+from app.services.utils import AuthHelpers
 
 router = APIRouter(prefix="/v1/trips", tags=["trips"])
 
+auth = AuthHelpers()
 
 @router.post("/upload-trips")
 async def upload_trips(
     *,
     db: SessionDep,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...), 
+    role = Depends(auth.verify_role("manager"))
 ) -> dict:
     # Validar extensión del archivo
     if not (file.filename.endswith(".xlsx") or file.filename.endswith(".xlsm")):

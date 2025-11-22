@@ -14,7 +14,7 @@ router = APIRouter(prefix="/v1/locations", tags=["Locations"])
 async def create_location(
     db: SessionDep,
     location_info: CreateLocation,
-    user_data: dict = Depends(auth.verify_role(["admin"]))
+    user_data: dict = Depends(auth.verify_role(["manager"]))
     ):
 
     
