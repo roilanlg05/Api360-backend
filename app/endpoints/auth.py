@@ -37,7 +37,7 @@ async def register(user_raw: CreateUser, db: SessionDep) -> dict:
         db.refresh(user)
 
         match user_raw.role:
-            case "admin":
+            case "manager":
                 # Crear primero manager y flushear para garantizar existencia en FK
                 manager = Manager(id=user.id)
                 db.add(manager)
@@ -110,7 +110,7 @@ async def sign_in(user_data: EmailPasswordRequestForm, db: SessionDep, response:
         "role": user.role
     }
     # Agregar campos específicos del rol
-    if user.manager and user.role == "admin":
+    if user.manager and user.role == "manager":
         metadata["organization_id"] = str(user.manager.organization_id) if user.manager.organization_id else None
     elif user.crew and user.role == "crew":
         metadata["aeroline"] = user.crew.aeroline
@@ -177,7 +177,7 @@ async def refresh_token(
     }
 
     # Agregar campos específicos del rol
-    if user.manager and user.role == "admin":
+    if user.manager and user.role == "manager":
         metadata["organization_id"] = str(user.manager.organization_id) if user.manager.organization_id else None
     elif user.crew and user.role == "crew":
         metadata["aeroline"] = user.crew.aeroline           

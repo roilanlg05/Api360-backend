@@ -14,7 +14,7 @@ async def register_driver(
     db: SessionDep,
     driver_info: CreateDriver,
     location_id: str = Query(...),
-    user_data: dict = Depends(auth.verify_role(["admin"]))  # <-- lista
+    user_data: dict = Depends(auth.verify_role(["manager"]))  # <-- lista
     ):
 
     email = driver_info.email.strip().lower()

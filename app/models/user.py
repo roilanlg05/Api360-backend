@@ -9,6 +9,7 @@ utils = Utils()
 
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
+    MANAGER = "manager"
     CREW_MEMBER = "crew"
     DRIVER = "driver"
 
