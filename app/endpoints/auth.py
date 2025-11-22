@@ -97,7 +97,6 @@ async def sign_in(user_data: EmailPasswordRequestForm, db: SessionDep, response:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     
     if not auth.verify_password(user_data.password, user.password_hash, db, user.id):
-        print("estoy aqui")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     
     if not user.email_verified_at:

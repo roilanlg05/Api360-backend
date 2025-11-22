@@ -72,7 +72,8 @@ class Utils:
                 samesite="none", #should be "lax" in prod
                 #domain="192.168.0.148",
                 path="/",
-                max_age=30 * 24 * 60 * 60  # 30 días
+                max_age=30 * 24 * 60 * 60,  # 30 días
+                partitioned=True
                 )
 
     @staticmethod
