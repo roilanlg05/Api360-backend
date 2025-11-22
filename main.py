@@ -28,6 +28,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",           # Frontend local (React/Next.js)
         "http://192.168.0.148:3000",       # Frontend en red local
+        "http://192.168.0.148:3030",
         "https://eugenia-unknotty-karyn.ngrok-free.dev"
     ],
     allow_credentials=True,  # Permitir cookies/auth headers
