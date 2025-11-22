@@ -162,7 +162,7 @@ class Crew(SQLModel, table=True):
             primary_key=True,  # ✅ PK en Column
         ),
     )
-    aeroline: Optional[str] = Field(default=None, description="Código AA, WN, DL...", index=True)
+    airline: Optional[str] = Field(default=None, description="Código AA, WN, DL...", index=True)
 
     user: Users = Relationship(
         back_populates="crew",
@@ -352,7 +352,7 @@ class Trip(SQLModel, table=True):
     )
     pick_up_location: str = Field(nullable=False)
     drop_off_location: str = Field(nullable=False)
-    aeroline: str = Field(nullable=False, index=True)
+    airline: str = Field(nullable=False, index=True)
     flight_number: str = Field(nullable=False, index=True)
 
     riders: int = Field(
@@ -428,7 +428,7 @@ class TripHistory(SQLModel, table=True):
     )
     pick_up_location: str = Field(nullable=False)
     drop_off_location: str = Field(nullable=False)
-    aeroline: str = Field(nullable=False, index=True)
+    airline: str = Field(nullable=False, index=True)
     flight_number: str = Field(nullable=False, index=True)
 
     riders: int = Field(

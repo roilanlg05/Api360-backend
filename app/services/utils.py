@@ -251,5 +251,26 @@ class AuthHelpers:
         )
         .where(Users.email == email)
     )
-        user = db.exec(query).one()
+        user = db.exec(query).first()
         return user
+    
+    @staticmethod
+    def verify_if_exist(db, email: str, phone: str | None):
+        from sqlalchemy import or_, func
+        conds = [func.lower(Users.email) == email]
+        if phone:
+            conds.append(Users.phone == phone)
+
+        row = db.exec(
+            select(Users.email, Users.phone).where(or_(*conds))
+        ).first()
+
+        if not row:
+            return
+
+        if row[0] and row[0].lower() == email:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
+        if phone and row[1] == phone:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Phone already in use")
+
+
