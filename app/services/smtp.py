@@ -1,23 +1,15 @@
-import os
 import requests
-from dotenv import load_dotenv
 from pydantic import EmailStr
+from app.core.config import Settings
 
-load_dotenv()
-
-API_KEY = os.getenv("BREVO_KEY")
-
-# DEBUG: Verifica que la key existe
-print(f"API_KEY cargada: {API_KEY[:10]}..." if API_KEY else "API_KEY NO ENCONTRADA")
-
-if not API_KEY:
-    raise ValueError("BREVO_KEY no está configurada en el archivo .env")
+settings = Settings()
+print("server:", settings.BREVO_KEY)
 
 async def send_email(email: EmailStr, sub: str, html_content: str, confirmation_url, name: str | None = None):
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
-        "api-key": API_KEY
+        "api-key": settings.BREVO_KEY
     }
 
     if name:
@@ -27,7 +19,7 @@ async def send_email(email: EmailStr, sub: str, html_content: str, confirmation_
 
     payload = {
         "sender": {
-            "name": "Api360 <no-reply>",
+            "name": "Api360",
             "email": "no-reply@api360.app"
         },
         "to": recipent,

@@ -21,6 +21,8 @@ router = APIRouter(prefix="/v1/auth", tags=["Auth"])
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(user_raw: CreateUser, db: SessionDep) -> dict:
 
+    auth.verify_if_exist(db, user_raw.email, user_raw.phone)
+
     hashed_pass = auth.hash_password(user_raw.password)
 
     try:
@@ -83,7 +85,7 @@ async def register(user_raw: CreateUser, db: SessionDep) -> dict:
         return {"message": "User registered successfully. Check your email."}
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Registration failed: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Registration failed: {str(e)}")
 
     
 @router.post("/sign-in")
@@ -302,15 +304,16 @@ async def verify_email(token: str, db: SessionDep):  # token como query paramete
 
 @router.post("/forgot-password")
 async def forgot_password(email: str, db: SessionDep):
-    print("hola estoy aqui")
+
     resp = JSONResponse(content="If the email exists, you will receive a password reset link",
                         status_code=status.HTTP_200_OK)
     try:
         user = auth.get_user_by_email(db, email=email)
-        print(user)
     except Exception as e:
-        #return resp
         return str(e)
+    
+    if not user or user.email_verified_at is None:
+        raise HTTPException(status_code=200, detail="If the email exists, you will receive a password reset link")
 
     # Rotar nonce
     user.password_reset_nonce = secrets.token_urlsafe(16)
