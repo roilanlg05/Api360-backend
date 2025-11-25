@@ -118,7 +118,6 @@ class Manager(SQLModel, table=True):
     __tablename__ = "manager"
 
     id: uuid.UUID = Field(
-        # primary_key=True,  # ❌ quitar: no permitido junto a sa_column
         sa_column=Column(
             PG_UUID(as_uuid=True),
             ForeignKey("auth.users.id", ondelete="CASCADE"),
@@ -177,7 +176,6 @@ class Driver(SQLModel, table=True):
     __tablename__ = "driver"
 
     id: uuid.UUID = Field(
-        # primary_key=True,  # ❌ quitar
         sa_column=Column(
             PG_UUID(as_uuid=True),
             ForeignKey("auth.users.id", ondelete="CASCADE"),
@@ -241,10 +239,10 @@ class Organization(SQLModel, table=True):
             nullable=True,
         ),
     )
-    #name: str = Field(nullable=True, index=True, unique=True)
+    name: str = Field(nullable=False, index=True, unique=True)
 
-    email: Optional[str] = Field(default=None)
-    phone: str = Field(nullable=False)
+    address: str = Field(default=None, nullable=False)
+    website: str | None = Field(nullable=True, default=None)
 
     plan: str = Field(default="freemium", nullable=False, index=True)
     status: Optional[str] = Field(default=None, index=True)

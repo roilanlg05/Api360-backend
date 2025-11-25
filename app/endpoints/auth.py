@@ -10,6 +10,7 @@ from app.schemas.schemas import Users, Manager, Crew, Driver, RefreshToken, Orga
 from app.services.smtp import get_confirmation_email_template, get_password_reset_email_template, send_email
 from datetime import datetime, timezone, timedelta
 from sqlmodel import select
+from app.models.organization import CreateOrganization
 import secrets
 
 utils = Utils()
@@ -42,21 +43,6 @@ async def register(user_raw: CreateUser, db: SessionDep) -> dict:
                 manager = Manager(id=user.id)
                 db.add(manager)
                 db.flush()  # <-- asegura INSERT antes de usar su id en otra FK
-
-                organization = Organization(
-                    manager_id=manager.id,
-                    email=user.email,
-                    phone=user.phone,
-                    status="active"
-                )
-                db.add(organization)
-                db.flush()  # inserta organización y obtiene su id
-
-                # Asociar organización al manager (campo reversible)
-                manager.organization_id = organization.id
-                db.add(manager)
-                db.commit()
-                db.refresh(organization)
             case "crew":
                 crew = Crew(id=user.id, aeroline=user_raw.aeroline)
                 db.add(crew)
@@ -65,23 +51,66 @@ async def register(user_raw: CreateUser, db: SessionDep) -> dict:
                 db.rollback()
                 raise ValueError("User role not valid")
             
+        if user_raw.role == "crew":
+            metadata = {
+                "email": user.email,
+                "purpose" : "email_verification"
+            }
+                
+            token = auth.encode_token(str(user.id), metadata, expires_in=timedelta(hours=24))
+            
+            confirmation_url = f"http://localhost:3000/auth/verify-email/?token={token['access_token']}"
+            html_content = get_confirmation_email_template(confirmation_url)
+
+            await send_email(
+                user.email,
+                "Confirm Your Api360 Account",
+                html_content,
+                confirmation_url
+            )
+
+        return {"user_id": str(user.id)}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Registration failed: {str(e)}")
+
+@router.post("/register/organization", status_code=status.HTTP_201_CREATED)
+async def register_organization(organization_data: CreateOrganization, manager_id: str, db: SessionDep) -> dict:
+
+    manager = auth.get_current_user(manager_id)
+
+    try:
+        organization = Organization(
+            manager_id=organization_data.manager_id,
+            name=organization_data.name,
+            address=organization_data.address,
+            website=organization_data.website,
+            status="active"
+        )
+        db.add(organization)
+        db.commit()
+        db.flush(organization)
+
+        manager.organization_id = organization.id
+        db.commit()
+
         metadata = {
-            "email": user.email,
+            "email": manager.email,
             "purpose" : "email_verification"
         }
             
-        token = auth.encode_token(str(user.id), metadata, expires_in=timedelta(hours=24))
+        token = auth.encode_token(str(manager.id), metadata, expires_in=timedelta(hours=24))
         
         confirmation_url = f"http://localhost:3000/auth/verify-email/?token={token['access_token']}"
         html_content = get_confirmation_email_template(confirmation_url)
 
         await send_email(
-            user.email,
+            manager.email,
             "Confirm Your Api360 Account",
             html_content,
             confirmation_url
         )
-
+        
         return {"message": "User registered successfully. Check your email."}
     except Exception as e:
         db.rollback()
