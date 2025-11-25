@@ -1,4 +1,4 @@
-from fastapi import Response, Request, HTTPException, status
+from fastapi import Response, Request, HTTPException, status, Depends
 from jose import jwt, JWTError
 import secrets
 import hashlib
@@ -11,10 +11,13 @@ from app.core.config import Settings
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
 import uuid
+from app.core.db_session import SessionDep
 
 settings = Settings()
 
 ph = PasswordHasher()  # usa parámetros seguros por defecto
+
+
 
 class Utils:
 
@@ -93,8 +96,8 @@ class AuthHelpers:
 
 
     @staticmethod
-    def get_current_user(db, id) -> Users:
-        user = db.get(Users, id)
+    def get_current_user(id, session = SessionDep()) -> Users:
+        user = session.get(Users, id)
         return user
 
     @staticmethod
@@ -102,7 +105,7 @@ class AuthHelpers:
         return ph.hash(plain + settings.PEPPER)
 
     @staticmethod
-    def verify_password(plain: str, hashed: str, db=None, user_id=None) -> bool:
+    def verify_password(plain: str, hashed: str, session = SessionDep(), user_id=None) -> bool:
         try:
             # 1. Verificar contraseña
             ph.verify(hashed, plain + settings.PEPPER)
@@ -111,11 +114,10 @@ class AuthHelpers:
             if ph.check_needs_rehash(hashed):
                 new_hash = ph.hash(plain + settings.PEPPER)
                 # 3. Actualizar en BD (necesitas sesión y user_id)
-                if db and user_id:
-                    user = db.get(Users, user_id)
+                if session and user_id:
+                    user = session.get(Users, user_id)
                     user.password_hash = new_hash
-                    db.commit()
-                    print(f"🔄 Password rehashed for user {user_id}: {new_hash[:20]}...")
+                    session.commit()
                 return True  # Contraseña correcta
             
             return True  # Contraseña correcta y hash actualizado

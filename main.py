@@ -27,9 +27,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",           # Frontend local (React/Next.js)
-        "http://192.168.0.148:3000",       # Frontend en red local
-        "http://192.168.0.148:3030",
-        "https://eugenia-unknotty-karyn.ngrok-free.dev"
+        "http://192.168.0.133:3000",       # Frontend en red local
+        "http://192.168.0.133:3030"
     ],
     allow_credentials=True,  # Permitir cookies/auth headers
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],     # Permitir los métodos (GET, POST, PUT, DELETE.)
