@@ -68,14 +68,27 @@ async def register(user_raw: CreateUser, db: SessionDep) -> dict:
                 html_content,
                 confirmation_url
             )
-
-        return {"user_id": str(user.id)}
+        elif user_raw.role == "manager":
+            metadata = {
+                "email": user.email,
+                "purpose" : "organization_creation"
+            }
+                
+            token = auth.encode_token(str(manager.id), metadata, expires_in=timedelta(hours=24))
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Registration failed: {str(e)}")
 
 @router.post("/register/organization", status_code=status.HTTP_201_CREATED)
-async def register_organization(organization_data: CreateOrganization, manager_id: str, db: SessionDep) -> dict:
+async def register_organization(organization_data: CreateOrganization, token: str, db: SessionDep) -> dict:
+
+    if not auth.decode_token(organization_data.token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    
+    manager_id = auth.decode_token(organization_data.token)["sub"]
+
+    if not manager_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
     manager = auth.get_current_user(manager_id)
 
