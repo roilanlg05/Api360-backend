@@ -59,4 +59,5 @@ node_modules/
 *.sqlite3
 *.db
 
-.claude
+.claudek8s/secrets.yaml
+.env
