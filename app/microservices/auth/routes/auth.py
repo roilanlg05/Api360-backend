@@ -17,8 +17,8 @@ utils = Utils()
 auth = Auth()
 settings = Settings()
 
-BASE_URL = "http://192.168.0.133:3000"
-BASE_API_URL = "http://192.168.0.133:8000/v1/auth"
+BASE_URL = "http://192.168.0.133:3000"  # Frontend URL (mantener)
+BASE_API_URL = "http://localhost:8000/v1/auth"  # Auth service se llama a sí mismo
 
 router = APIRouter(prefix="/v1/auth", tags=["Auth"])
 

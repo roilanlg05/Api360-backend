@@ -61,3 +61,5 @@ node_modules/
 
 .claudek8s/secrets.yaml
 .env
+
+secrets.yaml
