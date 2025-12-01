@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shared"
+version = "0.1.0"
+description = "Shared models and schemas for Api360"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "sqlmodel>=0.0.14",
+    "asyncpg>=0.30.0",
+    "email-validator>=2.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shared*", "models*", "schemas*", "core*"]

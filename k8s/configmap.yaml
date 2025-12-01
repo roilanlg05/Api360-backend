@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api360-config
+  namespace: api360
+data:
+  POSTGRES_SERVER: "postgres-service"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "api360"
+  TOKEN_DURATION: "5"
+  BASE_AUTH_URL: "http://auth-service:8000/v1/auth"

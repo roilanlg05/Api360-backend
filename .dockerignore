@@ -1,0 +1,37 @@
+# Virtual environments
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Tests
+**/.pytest_cache
+**/tests
+**/*_test.py
+**/*_tests.py
+
+# Docs
+*.md
+docs/
+
+# K8s (no necesario en imagen)
+k8s/
+
+# Env files (se pasan como variables de entorno)
+.env
+**/.env
+
+# OS
+.DS_Store
+Thumbs.db

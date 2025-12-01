@@ -1,0 +1,6 @@
+pydantic>=2.12.0
+pydantic-settings>=2.12.0
+sqlmodel>=0.0.27
+sqlalchemy>=2.0.44
+asyncpg>=0.31.0
+email-validator>=2.3.0
