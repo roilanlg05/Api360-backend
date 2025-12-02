@@ -13,7 +13,6 @@ auth = Auth()
 router = APIRouter(prefix="/v1/auth", tags=["Authentication"])
 
 @router.post("/register/crew-member")
-@limiter.limit("3/minute")
 async def register_crew_member(
     user_data: CreateCrewMember,
     request: Request
@@ -29,7 +28,6 @@ async def register_crew_member(
 
 
 @router.post("/register/manager")
-@limiter.limit("3/minute")
 async def manager(
     user_data: CreateManager,
     request: Request
@@ -45,7 +43,8 @@ async def manager(
 
 @router.post("/verify-data")
 async def verify_data(
-    user_data: UserData
+    user_data: UserData,
+    request: Request
     ) -> dict:
 
     resp, body = await auth_service.post('/verify-data', json=user_data.model_dump())
@@ -57,7 +56,6 @@ async def verify_data(
     return jsonr
 
 @router.post("/sign-in")
-@limiter.limit("1/minute")
 async def sign_in(
     user_data: EmailPasswordRequestForm,
     request: Request
@@ -75,7 +73,6 @@ async def sign_in(
     return jsonr
 
 @router.post("/sign-out") # ANADIR LOGICA PARA DETECTAR SI YA EL USUARIO YA HIZO LOGOUT
-@limiter.limit("1/minute")
 async def sign_out(
     request: Request,
     user_id: str = Header(alias="x-user-id")
@@ -90,11 +87,20 @@ async def sign_out(
     jsonr = JSONResponse(body, status_code=resp.status_code)
 
     for cookie in ["refresh_token", "expires_at"]:
-        jsonr.delete_cookie(cookie)
+        jsonr.set_cookie(
+            key=cookie,
+            value="",
+            path="/",
+            domain="192.168.0.133",  # Mismo dominio que las cookies originales
+            httponly=True,
+            samesite="lax",
+            secure=False,
+            max_age=0
+        )
+    
     return jsonr
 
 @router.post("/refresh")
-@limiter.limit("3/minute")
 async def refresh(
     request: Request,
     refresh: str | None = Cookie(default=None, alias="refresh_token")
@@ -112,7 +118,6 @@ async def refresh(
     return jsonr
 
 @router.put("/change-password")
-@limiter.limit("30/minute")
 async def change_password(
     user_data: PasswordUpdate, 
     request: Request,
@@ -131,7 +136,6 @@ async def change_password(
     return jsonr
 
 @router.get("/verify-email")
-@limiter.limit("1/minute")
 async def verify_email(
     token:str,
     request: Request
@@ -146,7 +150,6 @@ async def verify_email(
     return jsonr
 
 @router.post("/forgot-password")
-@limiter.limit("30/minute")
 async def forgot_password(
     email:EmailStr,
     request: Request
@@ -161,7 +164,6 @@ async def forgot_password(
     return jsonr
 
 @router.post("/reset-password")
-@limiter.limit("3/minute")
 async def reset_password(
     token: str, 
     new_password: NewPassword,

@@ -17,7 +17,6 @@ utils = Utils()
 auth = Auth()
 settings = Settings()
 
-BASE_URL = "http://192.168.0.133:3000"  # Frontend URL (mantener)
 BASE_API_URL = "http://localhost:8000/v1/auth"  # Auth service se llama a sí mismo
 
 router = APIRouter(prefix="/v1/auth", tags=["Auth"])
@@ -66,7 +65,7 @@ async def register_crew_member(
         }
             
         token = auth.encode_token(str(user.id), metadata, expires_in=timedelta(hours=24)) 
-        confirmation_url = f"{BASE_URL}/auth/verify-email/?token={token['access_token']}"
+        confirmation_url = f"{settings.BASE_URL}/auth/verify-email/?token={token['access_token']}"
         html_content = get_confirmation_email_template(confirmation_url)
 
         await send_email(
@@ -156,7 +155,7 @@ async def register_manager(
         }
             
         token = auth.encode_token(str(user.id), metadata, expires_in=timedelta(hours=24)) 
-        confirmation_url = f"{BASE_URL}/auth/verify-email/?token={token['access_token']}"
+        confirmation_url = f"{settings.BASE_URL}/auth/verify-email/?token={token['access_token']}"
         html_content = get_confirmation_email_template(confirmation_url)
 
         await send_email(
@@ -430,7 +429,7 @@ async def forgot_password(
     }
     token = auth.encode_token(sub=str(user.id), metadata=metadata, expires_in=timedelta(minutes=30))
 
-    reset_url = f"http://localhost:3000/reset-password/?token={token['access_token']}"
+    reset_url = f"{settings.BASE_URL}/reset-password/?token={token['access_token']}"
     html_content = get_password_reset_email_template(reset_url)
     await send_email(user.email, "Reset Your Password - Api360", html_content, reset_url)
     return resp

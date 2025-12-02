@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings
 from typing import Optional
 
 class BaseAppSettings(BaseSettings):
+    BASE_URL: str = "http://192.168.0.133:3000"  # Frontend URL (mantener)
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: str = "5432"
     POSTGRES_DB: str = "api360"

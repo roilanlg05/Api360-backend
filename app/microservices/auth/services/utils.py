@@ -70,9 +70,9 @@ class Utils:
                 key=k,
                 value=v, 
                 httponly=True, 
-                secure=True, 
+                secure=False,  
                 samesite="lax",
-                #domain="domain_name",
+                domain="192.168.0.133",
                 path="/",
                 max_age=30 * 24 * 60 * 60,  # 30 días
                 )
@@ -82,8 +82,12 @@ class Utils:
         for cookie in cookies:
             response.delete_cookie(
                 key=cookie, 
-                path="/"
-                )
+                path="/",
+                httponly=True,
+                secure=False,        # Descomentar con HTTPS
+                samesite="lax",
+                domain="192.168.0.133",
+            )
 
     @staticmethod
     def now_utc():                                    # Pequeña utilidad para “ahora” en UTC
