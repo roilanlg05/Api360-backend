@@ -25,6 +25,7 @@ class BaseAppSettings(BaseSettings):
         "/v1/auth/register/organization",
         "/health",
         "/ready",
+        "/v1/auth/verify-data"
     ]
 
     class Config:

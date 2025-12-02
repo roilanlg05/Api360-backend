@@ -44,10 +44,8 @@ async def manager(
     return jsonr
 
 @router.post("/verify-data")
-@limiter.limit("1/minute")
 async def verify_data(
-    user_data: UserData,
-    request: Request
+    user_data: UserData
     ) -> dict:
 
     resp, body = await auth_service.post('/verify-data', json=user_data.model_dump())
